@@ -5,10 +5,13 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+.vite/
+.cache/
 
 # Rust / Tauri outputs
 src-tauri/target/
 src-tauri/gen/
+src-tauri/.tauri/
 
 # Logs
 logs/
@@ -30,8 +33,20 @@ pnpm-debug.log*
 *.swo
 *.tmp
 *.bak
+*.orig
+*.rej
 
 # OS files
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local binary/temp artifacts
+*.pid
+*.seed
+*.pdb
+*.ilk
+*.exe~
+
+# Local screenshots or ad-hoc captures
+dashboard.png

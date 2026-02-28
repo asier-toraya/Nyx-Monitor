@@ -47,7 +47,7 @@ export function ProcessDetailsDialog({
     }
     setTrustLevel(process.trust_level);
     setLabel(process.trust_label ?? "");
-  }, [process?.pid, process?.started_at]);
+  }, [process?.pid, process?.trust_level, process?.trust_label]);
 
   if (!process) {
     return null;
@@ -127,6 +127,20 @@ export function ProcessDetailsDialog({
             <p>
               <strong>Hash SHA-256:</strong> {hashValue || "(vacio)"}
             </p>
+            <p>
+              <strong>Risk score:</strong> {process.risk_score}
+            </p>
+            <p>
+              <strong>Verdict:</strong> {process.verdict}
+            </p>
+            <div>
+              <strong>Factores:</strong>
+              <ul className="threat-evidence">
+                {(process.risk_factors ?? process.suspicion.reasons).slice(0, 6).map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
 

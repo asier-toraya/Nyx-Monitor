@@ -200,7 +200,7 @@ export function ProcessTable({
                 <td>{formatDate(row.started_at)}</td>
                 <td>
                   <span className={`risk-pill risk-pill--${row.suspicion.level}`}>
-                    {riskLabel(row.suspicion.level)} ({row.suspicion.score})
+                    {riskLabel(row.suspicion.level)} ({row.risk_score}) - {row.verdict}
                   </span>
                 </td>
               </tr>

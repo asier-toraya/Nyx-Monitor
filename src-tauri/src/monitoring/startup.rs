@@ -67,7 +67,7 @@ fn collect_run_key(
             continue;
         };
         let executable = trust::extract_executable_from_command(&command);
-        let trust_level = trust::classify_process_trust(executable.as_deref(), None);
+        let trust_level = trust::classify_process_trust(&name, executable.as_deref(), None);
         let dedupe_key = format!("{}|{}", name.to_lowercase(), command.to_lowercase());
         if !seen.insert(dedupe_key) {
             continue;
@@ -113,13 +113,14 @@ fn collect_startup_folder(
         if !seen.insert(dedupe_key) {
             continue;
         }
+        let trust_level = trust::classify_process_trust(&name, Some(&location), None);
 
         out.push(StartupProcess {
             name,
             command: location.clone(),
             location: location.clone(),
             source: source.to_string(),
-            trust_level: trust::classify_process_trust(Some(&location), None),
+            trust_level,
         });
     }
 }

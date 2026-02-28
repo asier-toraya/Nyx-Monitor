@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use chrono::{TimeZone, Utc};
 use sysinfo::System;
 
-use crate::models::{ProcessMetric, ProcessNode, RiskLevel, TrustLevel};
+use crate::models::{ProcessMetric, ProcessNode, RiskLevel, ThreatVerdict, TrustLevel};
 
 pub fn collect_process_metrics() -> Vec<ProcessMetric> {
     static COLLECTOR: OnceLock<Mutex<ProcessCollector>> = OnceLock::new();
@@ -49,6 +49,9 @@ impl ProcessCollector {
                 trust_level: TrustLevel::Unknown,
                 trust_label: None,
                 suspicion: Default::default(),
+                risk_factors: Vec::new(),
+                risk_score: 0,
+                verdict: ThreatVerdict::Benign,
             });
         }
 

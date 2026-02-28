@@ -16,12 +16,25 @@ import { formatPercent } from "./lib/format";
 import { useMonitoringData } from "./hooks/useMonitoringData";
 import type { DetectionProfile, ProcessMetric, TrustLevel } from "./types";
 
-type Tab = "overview" | "processes" | "threats" | "alerts" | "programs" | "startup" | "history";
+type Tab =
+  | "overview"
+  | "processes"
+  | "timeline"
+  | "health"
+  | "response"
+  | "threats"
+  | "alerts"
+  | "programs"
+  | "startup"
+  | "history";
 type ThemeMode = "dark" | "light";
 
 const tabs: { id: Tab; label: string; hint: string }[] = [
   { id: "overview", label: "Overview", hint: "Pulse and usage" },
   { id: "processes", label: "Processes", hint: "Live process intelligence" },
+  { id: "timeline", label: "Timeline", hint: "Event stream and evidence" },
+  { id: "health", label: "Health", hint: "Sensors and performance" },
+  { id: "response", label: "Response", hint: "Policy and actions" },
   { id: "threats", label: "Threats", hint: "Risk-ranked entities" },
   { id: "alerts", label: "Alerts", hint: "Operational incidents" },
   { id: "programs", label: "Installed", hint: "Software inventory" },
@@ -56,6 +69,21 @@ const AppUsageHistoryTable = lazy(() =>
     default: module.AppUsageHistoryTable
   }))
 );
+const EventTimelineTable = lazy(() =>
+  import("./components/EventTimelineTable").then((module) => ({
+    default: module.EventTimelineTable
+  }))
+);
+const HealthPanel = lazy(() =>
+  import("./components/HealthPanel").then((module) => ({
+    default: module.HealthPanel
+  }))
+);
+const ResponsePanel = lazy(() =>
+  import("./components/ResponsePanel").then((module) => ({
+    default: module.ResponsePanel
+  }))
+);
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -77,12 +105,19 @@ export default function App() {
     programs,
     startupProcesses,
     appUsageHistory,
+    eventTimeline,
+    sensorHealth,
+    performanceStats,
+    responsePolicy,
+    responseActions,
     isLoading,
     lastUpdated,
     refresh,
     onDeleteAlert,
     onDeleteAllAlerts,
-    onAddKnownProgram
+    onAddKnownProgram,
+    onSetResponsePolicy,
+    onRunResponseAction
   } = useMonitoringData({
     processRefreshPaused,
     refreshSpeed
@@ -124,6 +159,16 @@ export default function App() {
       exe_path: selectedParentProcess?.exe_path
     };
   }, [selectedProcess, selectedParentProcess]);
+
+  useEffect(() => {
+    if (!selectedProcess) {
+      return;
+    }
+    const refreshed = processByPid.get(selectedProcess.pid);
+    if (refreshed) {
+      setSelectedProcess(refreshed);
+    }
+  }, [processByPid, selectedProcess?.pid]);
 
   const onProfileChange = useCallback(async (nextProfile: DetectionProfile) => {
     setProfile(nextProfile);
@@ -167,24 +212,22 @@ export default function App() {
       if (!selectedProcess) {
         return;
       }
-      const changed = await setProcessTrustOverride({
+      await setProcessTrustOverride({
         path: selectedProcess.exe_path,
         name: selectedProcess.name,
         trustLevel: payload.trustLevel,
         label: payload.label
       });
-      if (changed) {
-        setSelectedProcess((previous) =>
-          previous
-            ? {
-                ...previous,
-                trust_level: payload.trustLevel,
-                trust_label: payload.label
-              }
-            : previous
-        );
-        await refresh(true);
-      }
+      setSelectedProcess((previous) =>
+        previous
+          ? {
+              ...previous,
+              trust_level: payload.trustLevel,
+              trust_label: payload.label
+            }
+          : previous
+      );
+      await refresh(true);
     },
     [refresh, selectedProcess]
   );
@@ -368,6 +411,36 @@ export default function App() {
           <section className="single">
             <Suspense fallback={<p className="loading">Loading threat matrix...</p>}>
               <ThreatsTable metrics={processMetrics} onProcessClick={openProcessDialog} />
+            </Suspense>
+          </section>
+        ) : null}
+
+        {activeTab === "timeline" ? (
+          <section className="single">
+            <Suspense fallback={<p className="loading">Loading event timeline...</p>}>
+              <EventTimelineTable events={eventTimeline} />
+            </Suspense>
+          </section>
+        ) : null}
+
+        {activeTab === "health" ? (
+          <section className="single">
+            <Suspense fallback={<p className="loading">Loading sensor health...</p>}>
+              <HealthPanel sensors={sensorHealth} performance={performanceStats} />
+            </Suspense>
+          </section>
+        ) : null}
+
+        {activeTab === "response" ? (
+          <section className="single">
+            <Suspense fallback={<p className="loading">Loading response controls...</p>}>
+              <ResponsePanel
+                policy={responsePolicy}
+                actions={responseActions}
+                processes={processMetrics}
+                onSavePolicy={onSetResponsePolicy}
+                onRunAction={onRunResponseAction}
+              />
             </Suspense>
           </section>
         ) : null}

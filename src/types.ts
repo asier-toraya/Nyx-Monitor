@@ -1,5 +1,11 @@
 export type RiskLevel = "legitimate" | "unknown" | "suspicious";
 export type TrustLevel = "windows_native" | "trusted" | "unknown";
+export type ThreatVerdict =
+  | "benign"
+  | "low_risk"
+  | "suspicious"
+  | "likely_malicious"
+  | "confirmed_malicious";
 export type DetectionProfile = "conservative" | "balanced" | "aggressive";
 export type AlertSeverity = "info" | "warn" | "critical";
 export type AlertStatus = "active" | "acknowledged" | "deleted";
@@ -37,6 +43,9 @@ export interface ProcessMetric {
   trust_level: TrustLevel;
   trust_label?: string;
   suspicion: SuspicionAssessment;
+  risk_factors: string[];
+  risk_score: number;
+  verdict: ThreatVerdict;
 }
 
 export interface InstalledProgram {
@@ -86,4 +95,95 @@ export interface CpuSpikeConfig {
   threshold_pct: number;
   min_consecutive_samples: number;
   deviation_ratio: number;
+}
+
+export type EventSeverity = "info" | "warn" | "critical";
+
+export interface ProcessIdentity {
+  pid: number;
+  ppid?: number;
+  image_name: string;
+  image_path?: string;
+  cmdline?: string;
+  user?: string;
+}
+
+export interface NetworkEvidence {
+  protocol: string;
+  local_address: string;
+  remote_address: string;
+  state?: string;
+  pid: number;
+}
+
+export interface RegistryEvidence {
+  key_path: string;
+  value_name: string;
+  old_value?: string;
+  new_value?: string;
+  operation: string;
+}
+
+export interface EventEnvelope {
+  event_id: string;
+  host_id: string;
+  timestamp_utc: string;
+  event_type: string;
+  sensor: string;
+  severity: EventSeverity;
+  message: string;
+  process?: ProcessIdentity;
+  network?: NetworkEvidence;
+  registry?: RegistryEvidence;
+  rule_hits: string[];
+  risk_score?: number;
+  verdict?: string;
+  evidence_refs: string[];
+}
+
+export interface SensorHealth {
+  sensor: string;
+  status: string;
+  last_success_utc?: string;
+  last_error?: string;
+  events_emitted: number;
+  last_latency_ms?: number;
+}
+
+export interface PerformanceStats {
+  loop_last_ms: number;
+  loop_avg_ms: number;
+  loop_p95_ms: number;
+  total_events: number;
+  event_store_size: number;
+  tracked_processes: number;
+}
+
+export type ResponseMode = "audit" | "constrain";
+export type ResponseActionType =
+  | "suspend_process"
+  | "block_process_network"
+  | "terminate_process";
+
+export interface ResponsePolicy {
+  mode: ResponseMode;
+  auto_constrain_threshold: number;
+  safe_mode: boolean;
+  allow_terminate: boolean;
+  cooldown_seconds: number;
+}
+
+export interface ResponseActionRecord {
+  id: string;
+  timestamp_utc: string;
+  action_type: ResponseActionType;
+  mode: ResponseMode;
+  pid: number;
+  process_name: string;
+  success: boolean;
+  automatic: boolean;
+  score: number;
+  verdict: ThreatVerdict;
+  reason: string;
+  details: string;
 }

@@ -2,8 +2,14 @@ use crate::models::TrustLevel;
 
 const TRUSTED_PUBLISHERS: &[&str] = &[
     "microsoft",
+    "openai",
+    "anthropic",
     "google",
     "mozilla",
+    "brave software",
+    "1password",
+    "notion",
+    "obsidian",
     "adobe",
     "intel",
     "nvidia",
@@ -18,9 +24,28 @@ const TRUSTED_PUBLISHERS: &[&str] = &[
     "jetbrains",
 ];
 
-pub fn classify_process_trust(path: Option<&str>, is_signed: Option<bool>) -> TrustLevel {
+const TRUSTED_EXECUTABLE_NAMES: &[&str] = &[
+    "chatgpt.exe",
+    "nyx-monitor.exe",
+    "p-control.exe",
+    "obsidian.exe",
+    "notion.exe",
+    "discord.exe",
+    "slack.exe",
+];
+
+pub fn classify_process_trust(name: &str, path: Option<&str>, is_signed: Option<bool>) -> TrustLevel {
     if is_windows_path(path) {
         return TrustLevel::WindowsNative;
+    }
+
+    let normalized_name = name.trim().to_lowercase();
+    if TRUSTED_EXECUTABLE_NAMES
+        .iter()
+        .any(|candidate| *candidate == normalized_name)
+        && is_user_program_path(path)
+    {
+        return TrustLevel::Trusted;
     }
 
     if is_signed == Some(true) {
@@ -58,6 +83,13 @@ pub fn is_windows_path(path: Option<&str>) -> bool {
         || lower.starts_with("\\\\?\\c:\\windows\\")
         || lower.contains("\\windows\\system32\\")
         || lower.contains("\\windows\\syswow64\\")
+}
+
+fn is_user_program_path(path: Option<&str>) -> bool {
+    let lower = path.unwrap_or_default().to_lowercase();
+    lower.contains("\\program files\\")
+        || lower.contains("\\program files (x86)\\")
+        || lower.contains("\\appdata\\local\\programs\\")
 }
 
 pub fn extract_executable_from_command(command: &str) -> Option<String> {

@@ -2,9 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   Alert,
   AppUsageEntry,
+  EventEnvelope,
   InstalledProgram,
+  PerformanceStats,
+  ResponseActionRecord,
+  ResponsePolicy,
   ProcessMetric,
   ProcessNode,
+  ResponseActionType,
+  SensorHealth,
   StartupProcess
 } from "../types";
 import type { RefreshSpeed } from "../components/ProcessTable";
@@ -14,10 +20,17 @@ import {
   deleteAllAlerts,
   getActiveAlerts,
   getAppUsageHistory,
+  getEventTimeline,
   getInstalledPrograms,
+  getPerformanceStats,
   getProcessMetrics,
   getProcessTree,
-  getStartupProcesses
+  getResponseActions,
+  getResponsePolicy,
+  getSensorHealth,
+  getStartupProcesses,
+  runResponseAction,
+  setResponsePolicy
 } from "../lib/api";
 
 const refreshIntervals: Record<RefreshSpeed, number> = {
@@ -38,6 +51,24 @@ export function useMonitoringData(options: {
   const [programs, setPrograms] = useState<InstalledProgram[]>([]);
   const [startupProcesses, setStartupProcesses] = useState<StartupProcess[]>([]);
   const [appUsageHistory, setAppUsageHistory] = useState<AppUsageEntry[]>([]);
+  const [eventTimeline, setEventTimeline] = useState<EventEnvelope[]>([]);
+  const [sensorHealth, setSensorHealth] = useState<SensorHealth[]>([]);
+  const [performanceStats, setPerformanceStats] = useState<PerformanceStats>({
+    loop_last_ms: 0,
+    loop_avg_ms: 0,
+    loop_p95_ms: 0,
+    total_events: 0,
+    event_store_size: 0,
+    tracked_processes: 0
+  });
+  const [responsePolicy, setResponsePolicyState] = useState<ResponsePolicy>({
+    mode: "audit",
+    auto_constrain_threshold: 95,
+    safe_mode: true,
+    allow_terminate: false,
+    cooldown_seconds: 180
+  });
+  const [responseActions, setResponseActions] = useState<ResponseActionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -48,16 +79,26 @@ export function useMonitoringData(options: {
       setProcessMetrics(metrics);
     }
 
-    const [activeAlerts, installed, startup, history] = await Promise.all([
+    const [activeAlerts, installed, startup, history, timeline, health, perf, policy, actions] = await Promise.all([
       getActiveAlerts(),
       getInstalledPrograms(),
       getStartupProcesses(),
-      getAppUsageHistory()
+      getAppUsageHistory(),
+      getEventTimeline({ limit: 250 }),
+      getSensorHealth(),
+      getPerformanceStats(),
+      getResponsePolicy(),
+      getResponseActions(200)
     ]);
     setAlerts(activeAlerts);
     setPrograms(installed);
     setStartupProcesses(startup);
     setAppUsageHistory(history);
+    setEventTimeline(timeline);
+    setSensorHealth(health);
+    setPerformanceStats(perf);
+    setResponsePolicyState(policy);
+    setResponseActions(actions);
     setLastUpdated(new Date());
   }, []);
 
@@ -111,6 +152,25 @@ export function useMonitoringData(options: {
     [refresh]
   );
 
+  const onSetResponsePolicy = useCallback(async (policy: ResponsePolicy) => {
+    await setResponsePolicy(policy);
+    const latest = await getResponsePolicy();
+    setResponsePolicyState(latest);
+  }, []);
+
+  const onRunResponseAction = useCallback(
+    async (payload: { pid: number; actionType: ResponseActionType; reason?: string }) => {
+      await runResponseAction(payload);
+      const [actions, activeAlerts] = await Promise.all([
+        getResponseActions(200),
+        getActiveAlerts()
+      ]);
+      setResponseActions(actions);
+      setAlerts(activeAlerts);
+    },
+    []
+  );
+
   return {
     processTree,
     processMetrics,
@@ -118,11 +178,18 @@ export function useMonitoringData(options: {
     programs,
     startupProcesses,
     appUsageHistory,
+    eventTimeline,
+    sensorHealth,
+    performanceStats,
+    responsePolicy,
+    responseActions,
     isLoading,
     lastUpdated,
     refresh,
     onDeleteAlert,
     onDeleteAllAlerts,
-    onAddKnownProgram
+    onAddKnownProgram,
+    onSetResponsePolicy,
+    onRunResponseAction
   };
 }

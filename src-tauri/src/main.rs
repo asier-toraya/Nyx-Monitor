@@ -4,11 +4,15 @@ mod app_state;
 mod detection;
 mod models;
 mod monitoring;
+mod response_engine;
 mod storage;
 
 use anyhow::Context;
 use app_state::RuntimeState;
-use models::{CpuSpikeConfig, DetectionProfile, TrustLevel};
+use models::{
+    CpuSpikeConfig, DetectionProfile, EventEnvelope, PerformanceStats, ResponseActionRecord,
+    ResponseActionType, ResponsePolicy, SensorHealth, TrustLevel,
+};
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -49,6 +53,59 @@ fn get_active_alerts(state: State<'_, RuntimeState>) -> Vec<models::Alert> {
 #[tauri::command]
 fn get_alert_history(state: State<'_, RuntimeState>) -> Vec<models::Alert> {
     state.alert_history()
+}
+
+#[tauri::command]
+fn get_event_timeline(
+    limit: Option<usize>,
+    event_type: Option<String>,
+    sensor: Option<String>,
+    search: Option<String>,
+    state: State<'_, RuntimeState>,
+) -> Vec<EventEnvelope> {
+    state.get_event_timeline(
+        limit.unwrap_or(200).clamp(1, 1_000),
+        event_type.as_deref(),
+        sensor.as_deref(),
+        search.as_deref(),
+    )
+}
+
+#[tauri::command]
+fn get_sensor_health(state: State<'_, RuntimeState>) -> Vec<SensorHealth> {
+    state.get_sensor_health()
+}
+
+#[tauri::command]
+fn get_performance_stats(state: State<'_, RuntimeState>) -> PerformanceStats {
+    state.get_performance_stats()
+}
+
+#[tauri::command]
+fn get_response_policy(state: State<'_, RuntimeState>) -> ResponsePolicy {
+    state.get_response_policy()
+}
+
+#[tauri::command]
+fn set_response_policy(policy: ResponsePolicy, state: State<'_, RuntimeState>) {
+    state.set_response_policy(policy);
+}
+
+#[tauri::command]
+fn get_response_actions(limit: Option<usize>, state: State<'_, RuntimeState>) -> Vec<ResponseActionRecord> {
+    state.get_response_actions(limit.unwrap_or(200).clamp(1, 1_000))
+}
+
+#[tauri::command]
+fn run_response_action(
+    pid: u32,
+    action_type: ResponseActionType,
+    reason: Option<String>,
+    state: State<'_, RuntimeState>,
+) -> Result<ResponseActionRecord, String> {
+    state
+        .run_response_action(pid, action_type, reason.as_deref(), false)
+        .map_err(|err| format!("failed running response action: {err}"))
 }
 
 #[tauri::command]
@@ -238,8 +295,12 @@ fn main() {
             std::fs::create_dir_all(&data_dir)
                 .with_context(|| format!("failed creating app data dir {}", data_dir.display()))?;
 
-            let state =
-                RuntimeState::new(data_dir.join("alerts.json"), data_dir.join("known_entities.json"))?;
+            let state = RuntimeState::new(
+                data_dir.join("alerts.json"),
+                data_dir.join("known_entities.json"),
+                data_dir.join("events.db"),
+                data_dir.join("response_actions.json"),
+            )?;
             monitoring::start_background_tasks(app.handle().clone(), state.clone());
             app.manage(state);
             Ok(())
@@ -252,6 +313,13 @@ fn main() {
             get_app_usage_history,
             get_active_alerts,
             get_alert_history,
+            get_event_timeline,
+            get_sensor_health,
+            get_performance_stats,
+            get_response_policy,
+            set_response_policy,
+            get_response_actions,
+            run_response_action,
             ack_alert,
             delete_alert,
             delete_all_alerts,

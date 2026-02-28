@@ -4,9 +4,15 @@ import type {
   AppUsageEntry,
   CpuSpikeConfig,
   DetectionProfile,
+  EventEnvelope,
   InstalledProgram,
+  PerformanceStats,
+  ResponseActionRecord,
+  ResponseActionType,
+  ResponsePolicy,
   ProcessMetric,
   ProcessNode,
+  SensorHealth,
   TrustLevel,
   StartupProcess
 } from "../types";
@@ -67,6 +73,99 @@ export async function getAlertHistory(): Promise<Alert[]> {
     return [];
   }
   return invokeSafe("get_alert_history");
+}
+
+export async function getEventTimeline(payload?: {
+  limit?: number;
+  eventType?: string;
+  sensor?: string;
+  search?: string;
+}): Promise<EventEnvelope[]> {
+  if (!isTauri) {
+    return [];
+  }
+  return invokeSafe("get_event_timeline", {
+    limit: payload?.limit,
+    event_type: payload?.eventType,
+    sensor: payload?.sensor,
+    search: payload?.search
+  });
+}
+
+export async function getSensorHealth(): Promise<SensorHealth[]> {
+  if (!isTauri) {
+    return [];
+  }
+  return invokeSafe("get_sensor_health");
+}
+
+export async function getPerformanceStats(): Promise<PerformanceStats> {
+  if (!isTauri) {
+    return {
+      loop_last_ms: 0,
+      loop_avg_ms: 0,
+      loop_p95_ms: 0,
+      total_events: 0,
+      event_store_size: 0,
+      tracked_processes: 0
+    };
+  }
+  return invokeSafe("get_performance_stats");
+}
+
+export async function getResponsePolicy(): Promise<ResponsePolicy> {
+  if (!isTauri) {
+    return {
+      mode: "audit",
+      auto_constrain_threshold: 95,
+      safe_mode: true,
+      allow_terminate: false,
+      cooldown_seconds: 180
+    };
+  }
+  return invokeSafe("get_response_policy");
+}
+
+export async function setResponsePolicy(policy: ResponsePolicy): Promise<void> {
+  if (!isTauri) {
+    return;
+  }
+  await invokeSafe("set_response_policy", { policy });
+}
+
+export async function getResponseActions(limit = 200): Promise<ResponseActionRecord[]> {
+  if (!isTauri) {
+    return [];
+  }
+  return invokeSafe("get_response_actions", { limit });
+}
+
+export async function runResponseAction(payload: {
+  pid: number;
+  actionType: ResponseActionType;
+  reason?: string;
+}): Promise<ResponseActionRecord> {
+  if (!isTauri) {
+    return {
+      id: `mock-${Date.now()}`,
+      timestamp_utc: new Date().toISOString(),
+      action_type: payload.actionType,
+      mode: "audit",
+      pid: payload.pid,
+      process_name: "mock",
+      success: false,
+      automatic: false,
+      score: 0,
+      verdict: "low_risk",
+      reason: payload.reason ?? "",
+      details: "Tauri runtime not available"
+    };
+  }
+  return invokeSafe("run_response_action", {
+    pid: payload.pid,
+    action_type: payload.actionType,
+    reason: payload.reason
+  });
 }
 
 export async function acknowledgeAlert(alertId: string): Promise<boolean> {

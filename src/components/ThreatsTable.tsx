@@ -24,6 +24,9 @@ export function ThreatsTable({ metrics, onProcessClick }: ThreatsTableProps) {
         );
       })
       .sort((a, b) => {
+        if (b.risk_score !== a.risk_score) {
+          return b.risk_score - a.risk_score;
+        }
         if (b.suspicion.score !== a.suspicion.score) {
           return b.suspicion.score - a.suspicion.score;
         }
@@ -55,6 +58,7 @@ export function ThreatsTable({ metrics, onProcessClick }: ThreatsTableProps) {
               <th>GPU</th>
               <th>Memoria</th>
               <th>Inicio</th>
+              <th>Verdict</th>
               <th>Riesgo</th>
               <th>Evidencias</th>
             </tr>
@@ -73,14 +77,15 @@ export function ThreatsTable({ metrics, onProcessClick }: ThreatsTableProps) {
                 <td>{formatPercent(row.gpu_pct)}</td>
                 <td>{formatMemoryMb(row.memory_mb)}</td>
                 <td>{formatDate(row.started_at)}</td>
+                <td>{row.verdict}</td>
                 <td>
                   <span className={`risk-pill risk-pill--${row.suspicion.level}`}>
-                    {row.suspicion.level} ({row.suspicion.score})
+                    {row.suspicion.level} ({row.risk_score})
                   </span>
                 </td>
                 <td>
                   <ul className="threat-evidence">
-                    {row.suspicion.reasons.slice(0, 3).map((reason) => (
+                    {(row.risk_factors ?? row.suspicion.reasons).slice(0, 3).map((reason) => (
                       <li key={reason}>{reason}</li>
                     ))}
                   </ul>

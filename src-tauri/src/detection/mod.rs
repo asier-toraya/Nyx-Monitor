@@ -2,7 +2,7 @@ use chrono::Utc;
 
 use crate::models::{
     Alert, AlertSeverity, AlertStatus, DetectionProfile, ProcessMetric, RiskLevel,
-    SuspicionAssessment,
+    SuspicionAssessment, ThreatVerdict, TrustLevel,
 };
 
 const SCRIPT_HOSTS: &[&str] = &[
@@ -63,8 +63,8 @@ pub fn assess_process(
     }
 
     if cpu_spike {
-        score = score.saturating_add(25);
-        reasons.push("Sustained CPU spike above baseline".to_string());
+        score = score.saturating_add(12);
+        reasons.push("Sustained CPU spike above baseline (performance anomaly)".to_string());
     }
 
     let (suspicious_threshold, unknown_threshold) = match profile {
@@ -125,6 +125,91 @@ pub fn build_alert(metric: &ProcessMetric, assessment: &SuspicionAssessment, cpu
         title,
         description,
         evidence: assessment.reasons.clone(),
+        timestamp: Utc::now().to_rfc3339(),
+        status: AlertStatus::Active,
+    })
+}
+
+pub fn classify_threat_verdict(
+    score: u8,
+    base_level: &RiskLevel,
+    trust_level: &TrustLevel,
+    correlation_count: usize,
+    internal_process: bool,
+) -> ThreatVerdict {
+    if internal_process {
+        return ThreatVerdict::Benign;
+    }
+
+    if *base_level == RiskLevel::Legitimate {
+        if score >= 55 {
+            return ThreatVerdict::LowRisk;
+        }
+        return ThreatVerdict::Benign;
+    }
+
+    let untrusted = *trust_level == TrustLevel::Unknown;
+    if score >= 95 && *base_level == RiskLevel::Suspicious && untrusted && correlation_count >= 2 {
+        return ThreatVerdict::ConfirmedMalicious;
+    }
+    if score >= 86 && *base_level == RiskLevel::Suspicious && untrusted && correlation_count >= 1 {
+        return ThreatVerdict::LikelyMalicious;
+    }
+    if score >= 70 && *base_level == RiskLevel::Suspicious {
+        return ThreatVerdict::Suspicious;
+    }
+    if score >= 35 {
+        return ThreatVerdict::LowRisk;
+    }
+    ThreatVerdict::Benign
+}
+
+pub fn compute_risk_score(base_score: u8, correlation_bonuses: &[u8]) -> u8 {
+    let correlation_total: u16 = correlation_bonuses
+        .iter()
+        .map(|bonus| *bonus as u16)
+        .sum::<u16>()
+        .min(22);
+    let total = (base_score as u16).saturating_add(correlation_total);
+    total.min(100) as u8
+}
+
+pub fn build_correlated_alert(
+    metric: &ProcessMetric,
+    score: u8,
+    verdict: &ThreatVerdict,
+    correlation_reasons: &[String],
+) -> Option<Alert> {
+    if score < 88
+        || correlation_reasons.len() < 2
+        || metric.suspicion.level != RiskLevel::Suspicious
+        || metric.trust_level != TrustLevel::Unknown
+    {
+        return None;
+    }
+
+    let severity = if score >= 90 {
+        AlertSeverity::Critical
+    } else {
+        AlertSeverity::Warn
+    };
+
+    let mut evidence = metric.suspicion.reasons.clone();
+    evidence.extend(correlation_reasons.iter().cloned());
+    evidence.push(format!("Risk score: {}", score));
+    evidence.push(format!("Verdict: {:?}", verdict));
+
+    Some(Alert {
+        id: format!("correlated_threat-{}-{}", metric.pid, Utc::now().timestamp_millis()),
+        alert_type: "correlated_threat".to_string(),
+        severity,
+        pid: Some(metric.pid),
+        title: format!("Correlated threat signal in {}", metric.name),
+        description: format!(
+            "Correlated signals raised {} (PID {}) to score {} with verdict {:?}",
+            metric.name, metric.pid, score, verdict
+        ),
+        evidence,
         timestamp: Utc::now().to_rfc3339(),
         status: AlertStatus::Active,
     })

@@ -20,6 +20,7 @@ sysinfo = "0.31"
 tauri = { version = "2", features = [] }
 tokio = { version = "1", features = ["time", "process", "rt-multi-thread"] }
 winreg = "0.52"
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [features]
 default = ["custom-protocol"]
