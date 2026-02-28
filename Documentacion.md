@@ -168,6 +168,30 @@ npm run tauri dev
 npm run tauri build
 ```
 
+### 8.4 Release publico automatizado
+
+Se agrego workflow de GitHub Actions para Windows:
+
+- `.github/workflows/release-windows.yml`
+
+Funcionamiento:
+
+1. push de tag `v*`
+2. build de instalador `NSIS .exe`
+3. publicacion automatica en GitHub Releases
+
+Ejemplo:
+
+```powershell
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+Firma de codigo opcional en CI (si se configuran secrets):
+
+- `WINDOWS_PFX_BASE64`
+- `WINDOWS_PFX_PASSWORD`
+
 ## 9. Problemas comunes y solucion
 
 ### 9.1 `cargo metadata ... program not found`

@@ -4,6 +4,14 @@
 
 Nyx Monitor es una aplicacion de escritorio para Windows orientada a observabilidad de procesos, clasificacion de confianza y deteccion de actividad sospechosa en tiempo real.
 
+## Instalacion para usuarios (rapida)
+
+1. Ir a `Releases` del repositorio.
+2. Descargar el instalador `Nyx Monitor ...-setup.exe`.
+3. Ejecutar el `.exe` y completar el asistente.
+
+No necesitas Rust, Node ni Visual Studio para instalar la app desde release.
+
 ## Estado actual
 
 - Nombre del producto: `Nyx Monitor`
@@ -73,6 +81,26 @@ Artefactos de salida esperados:
 
 - `src-tauri/target/release/bundle/msi/`
 - `src-tauri/target/release/bundle/nsis/`
+
+## Release automatico (GitHub Actions)
+
+El repositorio incluye workflow para generar y publicar automaticamente el instalador `.exe` de Windows al crear un tag:
+
+```powershell
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+Workflow: [.github/workflows/release-windows.yml](.github/workflows/release-windows.yml)
+
+Salida publicada en GitHub Release:
+
+- `src-tauri/target/release/bundle/nsis/*.exe`
+
+Firma de codigo opcional en CI:
+
+- `WINDOWS_PFX_BASE64` (certificado `.pfx` en base64)
+- `WINDOWS_PFX_PASSWORD` (password del certificado)
 
 ## Scripts NPM
 
