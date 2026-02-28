@@ -187,11 +187,6 @@ git tag v0.1.1
 git push origin v0.1.1
 ```
 
-Firma de codigo opcional en CI (si se configuran secrets):
-
-- `WINDOWS_PFX_BASE64`
-- `WINDOWS_PFX_PASSWORD`
-
 ## 9. Problemas comunes y solucion
 
 ### 9.1 `cargo metadata ... program not found`

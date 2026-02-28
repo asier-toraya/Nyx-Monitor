@@ -97,11 +97,6 @@ Salida publicada en GitHub Release:
 
 - `src-tauri/target/release/bundle/nsis/*.exe`
 
-Firma de codigo opcional en CI:
-
-- `WINDOWS_PFX_BASE64` (certificado `.pfx` en base64)
-- `WINDOWS_PFX_PASSWORD` (password del certificado)
-
 ## Scripts NPM
 
 - `npm run dev`: frontend Vite en `:1420`
