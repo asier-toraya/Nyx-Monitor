@@ -1,6 +1,6 @@
 # Nyx Monitor
 
-![Nyx Monitor Banner](images/nyx-monitor-banner.svg)
+![Nyx Monitor Banner](images/Nyx-Monitor%20banner.png)
 
 Nyx Monitor es una aplicacion de escritorio para Windows orientada a observabilidad de procesos, clasificacion de confianza y deteccion de actividad sospechosa en tiempo real.
 
