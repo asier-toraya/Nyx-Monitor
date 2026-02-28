@@ -1,0 +1,11 @@
+<svg width="160" height="160" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nyx Monitor logo">
+  <defs>
+    <linearGradient id="nyxGlow" x1="22" y1="18" x2="126" y2="142" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9f8cff"/>
+      <stop offset="1" stop-color="#6f5ce0"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="148" height="148" rx="22" fill="#1f1f1f" stroke="#434343" stroke-width="4"/>
+  <path d="M88 28C68 28 52 44 52 64C52 84 68 100 88 100C96 100 103 98 109 94C101 108 87 118 71 118C46 118 26 98 26 73C26 48 46 28 71 28H88Z" fill="#2f2f2f"/>
+  <path d="M56 120V42H74L104 86V42H122V120H104L74 76V120H56Z" fill="url(#nyxGlow)"/>
+</svg>
