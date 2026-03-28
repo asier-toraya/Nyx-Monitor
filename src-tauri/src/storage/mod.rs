@@ -38,22 +38,6 @@ impl AlertStore {
         self.persist()
     }
 
-    pub fn acknowledge(&mut self, alert_id: &str) -> Result<bool> {
-        let mut updated = false;
-        for alert in &mut self.alerts {
-            if alert.id == alert_id && alert.status != AlertStatus::Acknowledged {
-                alert.status = AlertStatus::Acknowledged;
-                updated = true;
-                break;
-            }
-        }
-
-        if updated {
-            self.persist()?;
-        }
-        Ok(updated)
-    }
-
     pub fn active_alerts(&self) -> Vec<Alert> {
         let mut list: Vec<Alert> = self
             .alerts

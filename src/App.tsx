@@ -1,4 +1,12 @@
-﻿import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode
+} from "react";
 import { AlertsPanel } from "./components/AlertsPanel";
 import nyxLogo from "./assets/nyx-logo.svg";
 import { ProcessDetailsDialog } from "./components/ProcessDetailsDialog";
@@ -9,9 +17,10 @@ import {
   openProcessFolderByPid,
   openPathInExplorer,
   openUrlInBrowser,
-  setProcessTrustOverride,
-  setDetectionProfile
+  setDetectionProfile,
+  setProcessTrustOverride
 } from "./lib/api";
+import { buildVirusTotalSearchUrl } from "./lib/externalLinks";
 import { formatPercent } from "./lib/format";
 import { useMonitoringData } from "./hooks/useMonitoringData";
 import type { DetectionProfile, ProcessMetric, TrustLevel } from "./types";
@@ -27,10 +36,18 @@ type Tab =
   | "programs"
   | "startup"
   | "history";
+
 type ThemeMode = "dark" | "light";
 
-const tabs: { id: Tab; label: string; hint: string }[] = [
-  { id: "overview", label: "Overview", hint: "Pulse and usage" },
+type TabConfig = {
+  id: Tab;
+  label: string;
+  hint: string;
+  heading?: string;
+};
+
+const tabs: TabConfig[] = [
+  { id: "overview", label: "Overview", hint: "Pulse and usage", heading: "System Pulse" },
   { id: "processes", label: "Processes", hint: "Live process intelligence" },
   { id: "timeline", label: "Timeline", hint: "Event stream and evidence" },
   { id: "health", label: "Health", hint: "Sensors and performance" },
@@ -41,6 +58,8 @@ const tabs: { id: Tab; label: string; hint: string }[] = [
   { id: "startup", label: "Startup", hint: "Boot-time entries" },
   { id: "history", label: "History", hint: "Usage timeline" }
 ];
+
+const profileOptions: DetectionProfile[] = ["conservative", "balanced", "aggressive"];
 
 const UsageChart = lazy(() =>
   import("./components/UsageChart").then((module) => ({ default: module.UsageChart }))
@@ -84,6 +103,32 @@ const ResponsePanel = lazy(() =>
     default: module.ResponsePanel
   }))
 );
+
+function TabSection({
+  children,
+  className = "single"
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <section className={className}>{children}</section>;
+}
+
+function LazyTabSection({
+  children,
+  fallback,
+  className = "single"
+}: {
+  children: ReactNode;
+  fallback: string;
+  className?: string;
+}) {
+  return (
+    <TabSection className={className}>
+      <Suspense fallback={<p className="loading">{fallback}</p>}>{children}</Suspense>
+    </TabSection>
+  );
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -143,27 +188,34 @@ export default function App() {
   const processByPid = useMemo(() => {
     return new Map<number, ProcessMetric>(processMetrics.map((item) => [item.pid, item]));
   }, [processMetrics]);
+  const activeTabConfig = useMemo(() => {
+    return tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+  }, [activeTab]);
   const selectedParentProcess = useMemo(() => {
     if (!selectedProcess?.ppid) {
       return null;
     }
+
     return processByPid.get(selectedProcess.ppid) ?? null;
   }, [selectedProcess, processByPid]);
   const selectedParentInfo = useMemo(() => {
     if (!selectedProcess?.ppid) {
       return null;
     }
+
     return {
       pid: selectedProcess.ppid,
       name: selectedParentProcess?.name,
       exe_path: selectedParentProcess?.exe_path
     };
   }, [selectedProcess, selectedParentProcess]);
+  const overviewAlerts = useMemo(() => alerts.slice(0, 5), [alerts]);
 
   useEffect(() => {
     if (!selectedProcess) {
       return;
     }
+
     const refreshed = processByPid.get(selectedProcess.pid);
     if (refreshed) {
       setSelectedProcess(refreshed);
@@ -179,6 +231,7 @@ export default function App() {
     if (!path) {
       return;
     }
+
     await openPathInExplorer(path);
   }, []);
 
@@ -186,6 +239,7 @@ export default function App() {
     if (!url) {
       return;
     }
+
     const opened = await openUrlInBrowser(url);
     if (!opened) {
       window.open(url, "_blank", "noopener,noreferrer");
@@ -212,6 +266,7 @@ export default function App() {
       if (!selectedProcess) {
         return;
       }
+
       await setProcessTrustOverride({
         path: selectedProcess.exe_path,
         name: selectedProcess.name,
@@ -237,6 +292,7 @@ export default function App() {
       setSelectedProcessHash("");
       return;
     }
+
     setIsHashLoading(true);
     try {
       const hash = await getFileSha256(selectedProcess.exe_path);
@@ -253,16 +309,18 @@ export default function App() {
     if (!selectedProcess) {
       return;
     }
+
     const query = selectedProcessHash || selectedProcess.name;
-    await onOpenExternalUrl(`https://www.virustotal.com/gui/search/${encodeURIComponent(query)}`);
+    await onOpenExternalUrl(buildVirusTotalSearchUrl(query));
   }, [selectedProcess, selectedProcessHash, onOpenExternalUrl]);
 
   const searchSelectedProcessInGoogle = useCallback(async () => {
     if (!selectedProcess) {
       return;
     }
+
     await onOpenExternalUrl(
-      `https://www.google.com/search?q=${encodeURIComponent(selectedProcess.name + " process")}`
+      `https://www.google.com/search?q=${encodeURIComponent(`${selectedProcess.name} process`)}`
     );
   }, [selectedProcess, onOpenExternalUrl]);
 
@@ -270,6 +328,7 @@ export default function App() {
     if (!selectedProcess?.exe_path) {
       return;
     }
+
     await onOpenPath(selectedProcess.exe_path);
   }, [selectedProcess, onOpenPath]);
 
@@ -277,8 +336,146 @@ export default function App() {
     if (!selectedParentInfo?.pid) {
       return;
     }
+
     await openProcessFolderByPid(selectedParentInfo.pid);
   }, [selectedParentInfo]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((previous) => (previous === "dark" ? "light" : "dark"));
+  }, []);
+
+  const toggleProcessRefresh = useCallback(() => {
+    setProcessRefreshPaused((previous) => !previous);
+  }, []);
+
+  const renderOverviewTab = () => {
+    return (
+      <TabSection className="grid">
+        <StatCard
+          title="Running Processes"
+          value={`${processMetrics.length}`}
+          hint="Current process count"
+        />
+        <StatCard
+          title="Active Alerts"
+          value={`${alerts.length}`}
+          hint="Incidents pending review"
+          tone={alerts.length > 0 ? "warn" : "neutral"}
+        />
+        <StatCard
+          title="Suspicious Processes"
+          value={`${suspiciousCount}`}
+          hint="Processes tagged as suspicious"
+          tone={suspiciousCount > 0 ? "critical" : "neutral"}
+        />
+        <StatCard
+          title="Top CPU Process"
+          value={topCpu ? topCpu.name : "-"}
+          hint={topCpu ? `Current load ${formatPercent(topCpu.cpu_pct)}` : "No process data"}
+        />
+        <Suspense fallback={<p className="loading">Rendering chart...</p>}>
+          <UsageChart metrics={processMetrics} />
+        </Suspense>
+        <AlertsPanel
+          alerts={overviewAlerts}
+          onDelete={onDeleteAlert}
+          onDeleteAll={onDeleteAllAlerts}
+        />
+      </TabSection>
+    );
+  };
+
+  const renderActiveTabContent = () => {
+    switch (activeTab) {
+      case "overview":
+        return renderOverviewTab();
+      case "processes":
+        return (
+          <LazyTabSection
+            className="split split--processes"
+            fallback="Loading process intelligence modules..."
+          >
+            <ProcessTree
+              tree={processTree}
+              onProcessClick={openProcessDialog}
+              onOpenExternalUrl={onOpenExternalUrl}
+            />
+            <ProcessTable
+              metrics={processMetrics}
+              paused={processRefreshPaused}
+              speed={refreshSpeed}
+              onTogglePause={toggleProcessRefresh}
+              onSpeedChange={setRefreshSpeed}
+              onProcessClick={openProcessDialog}
+              onOpenExternalUrl={onOpenExternalUrl}
+            />
+          </LazyTabSection>
+        );
+      case "threats":
+        return (
+          <LazyTabSection fallback="Loading threat matrix...">
+            <ThreatsTable metrics={processMetrics} onProcessClick={openProcessDialog} />
+          </LazyTabSection>
+        );
+      case "timeline":
+        return (
+          <LazyTabSection fallback="Loading event timeline...">
+            <EventTimelineTable events={eventTimeline} />
+          </LazyTabSection>
+        );
+      case "health":
+        return (
+          <LazyTabSection fallback="Loading sensor health...">
+            <HealthPanel sensors={sensorHealth} performance={performanceStats} />
+          </LazyTabSection>
+        );
+      case "response":
+        return (
+          <LazyTabSection fallback="Loading response controls...">
+            <ResponsePanel
+              policy={responsePolicy}
+              actions={responseActions}
+              processes={processMetrics}
+              onSavePolicy={onSetResponsePolicy}
+              onRunAction={onRunResponseAction}
+            />
+          </LazyTabSection>
+        );
+      case "alerts":
+        return (
+          <TabSection>
+            <AlertsPanel
+              alerts={alerts}
+              onDelete={onDeleteAlert}
+              onDeleteAll={onDeleteAllAlerts}
+            />
+          </TabSection>
+        );
+      case "programs":
+        return (
+          <LazyTabSection fallback="Loading software inventory...">
+            <InstalledProgramsTable
+              programs={programs}
+              onOpenPath={onOpenPath}
+              onAddKnownProgram={onAddKnownProgram}
+              onOpenExternalUrl={onOpenExternalUrl}
+            />
+          </LazyTabSection>
+        );
+      case "startup":
+        return (
+          <LazyTabSection fallback="Loading startup map...">
+            <StartupProcessesTable processes={startupProcesses} onOpenPath={onOpenPath} />
+          </LazyTabSection>
+        );
+      case "history":
+        return (
+          <LazyTabSection fallback="Loading usage history...">
+            <AppUsageHistoryTable entries={appUsageHistory} onOpenPath={onOpenPath} />
+          </LazyTabSection>
+        );
+    }
+  };
 
   return (
     <div className="app-shell">
@@ -312,9 +509,11 @@ export default function App() {
             value={profile}
             onChange={(event) => onProfileChange(event.target.value as DetectionProfile)}
           >
-            <option value="conservative">Conservative</option>
-            <option value="balanced">Balanced</option>
-            <option value="aggressive">Aggressive</option>
+            {profileOptions.map((option) => (
+              <option key={option} value={option}>
+                {option.charAt(0).toUpperCase() + option.slice(1)}
+              </option>
+            ))}
           </select>
         </div>
       </aside>
@@ -323,16 +522,19 @@ export default function App() {
         <header className="command-deck">
           <div>
             <p className="eyebrow">Operational Command Deck</p>
-            <h2>
-              {activeTab === "overview" ? "System Pulse" : tabs.find((tab) => tab.id === activeTab)?.label}
-            </h2>
+            <h2>{activeTabConfig.heading ?? activeTabConfig.label}</h2>
             <p className="subtitle">
-              Real-time visibility over running processes, trust posture, and suspicious behavior analysis.
+              Real-time visibility over running processes, trust posture, and suspicious behavior
+              analysis.
             </p>
           </div>
           <div className="command-deck__meta">
-            <p>{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : "Synchronizing telemetry..."}</p>
-            <button className="btn btn--small" onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}>
+            <p>
+              {lastUpdated
+                ? `Updated ${lastUpdated.toLocaleTimeString()}`
+                : "Synchronizing telemetry..."}
+            </p>
+            <button className="btn btn--small" onClick={toggleTheme}>
               {theme === "dark" ? "Switch to light" : "Switch to dark"}
             </button>
           </div>
@@ -358,127 +560,7 @@ export default function App() {
         </section>
 
         {isLoading ? <p className="loading">Collecting live telemetry...</p> : null}
-
-        {activeTab === "overview" ? (
-          <section className="grid">
-            <StatCard title="Running Processes" value={`${processMetrics.length}`} hint="Current process count" />
-            <StatCard
-              title="Active Alerts"
-              value={`${alerts.length}`}
-              hint="Incidents pending review"
-              tone={alerts.length > 0 ? "warn" : "neutral"}
-            />
-            <StatCard
-              title="Suspicious Processes"
-              value={`${suspiciousCount}`}
-              hint="Processes tagged as suspicious"
-              tone={suspiciousCount > 0 ? "critical" : "neutral"}
-            />
-            <StatCard
-              title="Top CPU Process"
-              value={topCpu ? topCpu.name : "-"}
-              hint={topCpu ? `Current load ${formatPercent(topCpu.cpu_pct)}` : "No process data"}
-            />
-            <Suspense fallback={<p className="loading">Rendering chart...</p>}>
-              <UsageChart metrics={processMetrics} />
-            </Suspense>
-            <AlertsPanel alerts={alerts.slice(0, 5)} onDelete={onDeleteAlert} onDeleteAll={onDeleteAllAlerts} />
-          </section>
-        ) : null}
-
-        {activeTab === "processes" ? (
-          <section className="split split--processes">
-            <Suspense fallback={<p className="loading">Loading process intelligence modules...</p>}>
-              <ProcessTree
-                tree={processTree}
-                onProcessClick={openProcessDialog}
-                onOpenExternalUrl={onOpenExternalUrl}
-              />
-              <ProcessTable
-                metrics={processMetrics}
-                paused={processRefreshPaused}
-                speed={refreshSpeed}
-                onTogglePause={() => setProcessRefreshPaused((prev) => !prev)}
-                onSpeedChange={setRefreshSpeed}
-                onProcessClick={openProcessDialog}
-                onOpenExternalUrl={onOpenExternalUrl}
-              />
-            </Suspense>
-          </section>
-        ) : null}
-
-        {activeTab === "threats" ? (
-          <section className="single">
-            <Suspense fallback={<p className="loading">Loading threat matrix...</p>}>
-              <ThreatsTable metrics={processMetrics} onProcessClick={openProcessDialog} />
-            </Suspense>
-          </section>
-        ) : null}
-
-        {activeTab === "timeline" ? (
-          <section className="single">
-            <Suspense fallback={<p className="loading">Loading event timeline...</p>}>
-              <EventTimelineTable events={eventTimeline} />
-            </Suspense>
-          </section>
-        ) : null}
-
-        {activeTab === "health" ? (
-          <section className="single">
-            <Suspense fallback={<p className="loading">Loading sensor health...</p>}>
-              <HealthPanel sensors={sensorHealth} performance={performanceStats} />
-            </Suspense>
-          </section>
-        ) : null}
-
-        {activeTab === "response" ? (
-          <section className="single">
-            <Suspense fallback={<p className="loading">Loading response controls...</p>}>
-              <ResponsePanel
-                policy={responsePolicy}
-                actions={responseActions}
-                processes={processMetrics}
-                onSavePolicy={onSetResponsePolicy}
-                onRunAction={onRunResponseAction}
-              />
-            </Suspense>
-          </section>
-        ) : null}
-
-        {activeTab === "alerts" ? (
-          <section className="single">
-            <AlertsPanel alerts={alerts} onDelete={onDeleteAlert} onDeleteAll={onDeleteAllAlerts} />
-          </section>
-        ) : null}
-
-        {activeTab === "programs" ? (
-          <section className="single">
-            <Suspense fallback={<p className="loading">Loading software inventory...</p>}>
-              <InstalledProgramsTable
-                programs={programs}
-                onOpenPath={onOpenPath}
-                onAddKnownProgram={onAddKnownProgram}
-                onOpenExternalUrl={onOpenExternalUrl}
-              />
-            </Suspense>
-          </section>
-        ) : null}
-
-        {activeTab === "startup" ? (
-          <section className="single">
-            <Suspense fallback={<p className="loading">Loading startup map...</p>}>
-              <StartupProcessesTable processes={startupProcesses} onOpenPath={onOpenPath} />
-            </Suspense>
-          </section>
-        ) : null}
-
-        {activeTab === "history" ? (
-          <section className="single">
-            <Suspense fallback={<p className="loading">Loading usage history...</p>}>
-              <AppUsageHistoryTable entries={appUsageHistory} onOpenPath={onOpenPath} />
-            </Suspense>
-          </section>
-        ) : null}
+        {renderActiveTabContent()}
       </main>
 
       <ProcessDetailsDialog

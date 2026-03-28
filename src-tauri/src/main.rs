@@ -10,8 +10,8 @@ mod storage;
 use anyhow::Context;
 use app_state::RuntimeState;
 use models::{
-    CpuSpikeConfig, DetectionProfile, EventEnvelope, PerformanceStats, ResponseActionRecord,
-    ResponseActionType, ResponsePolicy, SensorHealth, TrustLevel,
+    DetectionProfile, EventEnvelope, PerformanceStats, ResponseActionRecord, ResponseActionType,
+    ResponsePolicy, SensorHealth, TrustLevel,
 };
 use sha2::{Digest, Sha256};
 use std::fs::File;
@@ -48,11 +48,6 @@ fn get_app_usage_history(state: State<'_, RuntimeState>) -> Vec<models::AppUsage
 #[tauri::command]
 fn get_active_alerts(state: State<'_, RuntimeState>) -> Vec<models::Alert> {
     state.active_alerts()
-}
-
-#[tauri::command]
-fn get_alert_history(state: State<'_, RuntimeState>) -> Vec<models::Alert> {
-    state.alert_history()
 }
 
 #[tauri::command]
@@ -109,13 +104,6 @@ fn run_response_action(
 }
 
 #[tauri::command]
-fn ack_alert(alert_id: String, state: State<'_, RuntimeState>) -> Result<bool, String> {
-    state
-        .acknowledge_alert(&alert_id)
-        .map_err(|err| format!("failed acknowledging alert: {err}"))
-}
-
-#[tauri::command]
 fn delete_alert(alert_id: String, state: State<'_, RuntimeState>) -> Result<bool, String> {
     state
         .delete_alert(&alert_id)
@@ -132,23 +120,6 @@ fn delete_all_alerts(state: State<'_, RuntimeState>) -> Result<usize, String> {
 #[tauri::command]
 fn set_detection_profile(profile: DetectionProfile, state: State<'_, RuntimeState>) {
     state.set_profile(profile);
-}
-
-#[tauri::command]
-fn set_cpu_spike_threshold(config: CpuSpikeConfig, state: State<'_, RuntimeState>) {
-    state.set_cpu_spike_config(config);
-}
-
-#[tauri::command]
-fn add_known_process(
-    path: Option<String>,
-    name: String,
-    label: String,
-    state: State<'_, RuntimeState>,
-) -> Result<bool, String> {
-    state
-        .add_known_process(path.as_deref(), &name, &label)
-        .map_err(|err| format!("failed adding known process: {err}"))
 }
 
 #[tauri::command]
@@ -312,7 +283,6 @@ fn main() {
             get_startup_processes,
             get_app_usage_history,
             get_active_alerts,
-            get_alert_history,
             get_event_timeline,
             get_sensor_health,
             get_performance_stats,
@@ -320,12 +290,9 @@ fn main() {
             set_response_policy,
             get_response_actions,
             run_response_action,
-            ack_alert,
             delete_alert,
             delete_all_alerts,
             set_detection_profile,
-            set_cpu_spike_threshold,
-            add_known_process,
             add_known_program,
             set_process_trust_override,
             open_path_in_explorer,

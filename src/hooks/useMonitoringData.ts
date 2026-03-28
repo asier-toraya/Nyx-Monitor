@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   Alert,
   AppUsageEntry,
@@ -40,11 +40,18 @@ const refreshIntervals: Record<RefreshSpeed, number> = {
   fast: 1000
 };
 
+const operationalRefreshIntervalMs = 5000;
+const inventoryRefreshIntervalMs = 60000;
+
 export function useMonitoringData(options: {
   processRefreshPaused: boolean;
   refreshSpeed: RefreshSpeed;
 }) {
   const { processRefreshPaused, refreshSpeed } = options;
+  const hasInitialized = useRef(false);
+  const snapshotRefreshInFlight = useRef(false);
+  const operationalRefreshInFlight = useRef(false);
+  const inventoryRefreshInFlight = useRef(false);
   const [processTree, setProcessTree] = useState<ProcessNode[]>([]);
   const [processMetrics, setProcessMetrics] = useState<ProcessMetric[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -72,56 +79,194 @@ export function useMonitoringData(options: {
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const refresh = useCallback(async (includeProcesses: boolean) => {
-    if (includeProcesses) {
+  const refreshProcessSnapshot = useCallback(async () => {
+    if (snapshotRefreshInFlight.current) {
+      return;
+    }
+
+    snapshotRefreshInFlight.current = true;
+    try {
       const [tree, metrics] = await Promise.all([getProcessTree(), getProcessMetrics()]);
       setProcessTree(tree);
       setProcessMetrics(metrics);
+      setLastUpdated(new Date());
+    } finally {
+      snapshotRefreshInFlight.current = false;
     }
-
-    const [activeAlerts, installed, startup, history, timeline, health, perf, policy, actions] = await Promise.all([
-      getActiveAlerts(),
-      getInstalledPrograms(),
-      getStartupProcesses(),
-      getAppUsageHistory(),
-      getEventTimeline({ limit: 250 }),
-      getSensorHealth(),
-      getPerformanceStats(),
-      getResponsePolicy(),
-      getResponseActions(200)
-    ]);
-    setAlerts(activeAlerts);
-    setPrograms(installed);
-    setStartupProcesses(startup);
-    setAppUsageHistory(history);
-    setEventTimeline(timeline);
-    setSensorHealth(health);
-    setPerformanceStats(perf);
-    setResponsePolicyState(policy);
-    setResponseActions(actions);
-    setLastUpdated(new Date());
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
+  const refreshOperationalData = useCallback(async () => {
+    if (operationalRefreshInFlight.current) {
+      return;
+    }
 
-    const run = async () => {
+    operationalRefreshInFlight.current = true;
+    try {
+      const [activeAlerts, history, timeline, health, perf, actions] = await Promise.all([
+        getActiveAlerts(),
+        getAppUsageHistory(),
+        getEventTimeline({ limit: 250 }),
+        getSensorHealth(),
+        getPerformanceStats(),
+        getResponseActions(200)
+      ]);
+      setAlerts(activeAlerts);
+      setAppUsageHistory(history);
+      setEventTimeline(timeline);
+      setSensorHealth(health);
+      setPerformanceStats(perf);
+      setResponseActions(actions);
+      setLastUpdated(new Date());
+    } finally {
+      operationalRefreshInFlight.current = false;
+    }
+  }, []);
+
+  const refreshInventoryData = useCallback(async () => {
+    if (inventoryRefreshInFlight.current) {
+      return;
+    }
+
+    inventoryRefreshInFlight.current = true;
+    try {
+      const [installed, startup] = await Promise.all([
+        getInstalledPrograms(),
+        getStartupProcesses()
+      ]);
+      setPrograms(installed);
+      setStartupProcesses(startup);
+    } finally {
+      inventoryRefreshInFlight.current = false;
+    }
+  }, []);
+
+  const refreshResponsePolicy = useCallback(async () => {
+    const policy = await getResponsePolicy();
+    setResponsePolicyState(policy);
+  }, []);
+
+  const refresh = useCallback(
+    async (includeProcesses: boolean) => {
+      const tasks: Promise<void>[] = [refreshOperationalData()];
+      if (includeProcesses) {
+        tasks.push(refreshProcessSnapshot());
+      }
+      await Promise.all(tasks);
+    },
+    [refreshOperationalData, refreshProcessSnapshot]
+  );
+
+  useEffect(() => {
+    if (hasInitialized.current) {
+      return;
+    }
+
+    hasInitialized.current = true;
+    let cancelled = false;
+
+    const loadInitialData = async () => {
       try {
-        await refresh(!processRefreshPaused);
+        const tasks: Promise<void>[] = [
+          refreshOperationalData(),
+          refreshInventoryData(),
+          refreshResponsePolicy()
+        ];
+        if (!processRefreshPaused) {
+          tasks.push(refreshProcessSnapshot());
+        }
+        await Promise.all(tasks);
       } finally {
-        if (mounted) {
+        if (!cancelled) {
           setIsLoading(false);
         }
       }
     };
 
-    run();
-    const timer = window.setInterval(run, refreshIntervals[refreshSpeed]);
+    loadInitialData();
+
     return () => {
-      mounted = false;
-      window.clearInterval(timer);
+      cancelled = true;
     };
-  }, [refresh, processRefreshPaused, refreshSpeed]);
+  }, [
+    processRefreshPaused,
+    refreshInventoryData,
+    refreshOperationalData,
+    refreshProcessSnapshot,
+    refreshResponsePolicy
+  ]);
+
+  useEffect(() => {
+    if (processRefreshPaused) {
+      return;
+    }
+
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const schedule = () => {
+      timer = window.setTimeout(async () => {
+        await refreshProcessSnapshot();
+        if (!cancelled) {
+          schedule();
+        }
+      }, refreshIntervals[refreshSpeed]);
+    };
+
+    schedule();
+
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [processRefreshPaused, refreshProcessSnapshot, refreshSpeed]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const schedule = () => {
+      timer = window.setTimeout(async () => {
+        await refreshOperationalData();
+        if (!cancelled) {
+          schedule();
+        }
+      }, operationalRefreshIntervalMs);
+    };
+
+    schedule();
+
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [refreshOperationalData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const schedule = () => {
+      timer = window.setTimeout(async () => {
+        await refreshInventoryData();
+        if (!cancelled) {
+          schedule();
+        }
+      }, inventoryRefreshIntervalMs);
+    };
+
+    schedule();
+
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+      }
+    };
+  }, [refreshInventoryData]);
 
   const onDeleteAlert = useCallback(async (alertId: string) => {
     setAlerts((prev) => prev.filter((item) => item.id !== alertId));
@@ -146,17 +291,16 @@ export function useMonitoringData(options: {
         label
       });
       if (changed) {
-        await refresh(true);
+        await refreshInventoryData();
       }
     },
-    [refresh]
+    [refreshInventoryData]
   );
 
   const onSetResponsePolicy = useCallback(async (policy: ResponsePolicy) => {
     await setResponsePolicy(policy);
-    const latest = await getResponsePolicy();
-    setResponsePolicyState(latest);
-  }, []);
+    await refreshResponsePolicy();
+  }, [refreshResponsePolicy]);
 
   const onRunResponseAction = useCallback(
     async (payload: { pid: number; actionType: ResponseActionType; reason?: string }) => {

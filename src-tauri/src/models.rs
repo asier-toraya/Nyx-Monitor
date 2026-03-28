@@ -24,6 +24,18 @@ impl Default for ThreatVerdict {
     }
 }
 
+impl ThreatVerdict {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Benign => "benign",
+            Self::LowRisk => "low_risk",
+            Self::Suspicious => "suspicious",
+            Self::LikelyMalicious => "likely_malicious",
+            Self::ConfirmedMalicious => "confirmed_malicious",
+        }
+    }
+}
+
 impl Default for RiskLevel {
     fn default() -> Self {
         Self::Unknown
@@ -219,6 +231,19 @@ pub struct ProcessIdentity {
     pub user: Option<String>,
 }
 
+impl ProcessMetric {
+    pub fn identity(&self) -> ProcessIdentity {
+        ProcessIdentity {
+            pid: self.pid,
+            ppid: self.ppid,
+            image_name: self.name.clone(),
+            image_path: self.exe_path.clone(),
+            cmdline: None,
+            user: self.user.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct NetworkEvidence {
     pub protocol: String,
@@ -337,4 +362,48 @@ pub struct ResponseActionRecord {
     pub verdict: ThreatVerdict,
     pub reason: String,
     pub details: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ProcessMetric, ThreatVerdict};
+
+    #[test]
+    fn threat_verdict_strings_match_expected_wire_format() {
+        assert_eq!(ThreatVerdict::Benign.as_str(), "benign");
+        assert_eq!(ThreatVerdict::LowRisk.as_str(), "low_risk");
+        assert_eq!(ThreatVerdict::Suspicious.as_str(), "suspicious");
+        assert_eq!(
+            ThreatVerdict::LikelyMalicious.as_str(),
+            "likely_malicious"
+        );
+        assert_eq!(
+            ThreatVerdict::ConfirmedMalicious.as_str(),
+            "confirmed_malicious"
+        );
+    }
+
+    #[test]
+    fn process_metric_identity_preserves_process_fields() {
+        let metric = ProcessMetric {
+            pid: 4242,
+            ppid: Some(101),
+            name: "powershell.exe".to_string(),
+            exe_path: Some("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe".to_string()),
+            user: Some("ASIER\\user".to_string()),
+            ..ProcessMetric::default()
+        };
+
+        let identity = metric.identity();
+
+        assert_eq!(identity.pid, 4242);
+        assert_eq!(identity.ppid, Some(101));
+        assert_eq!(identity.image_name, "powershell.exe");
+        assert_eq!(
+            identity.image_path.as_deref(),
+            Some("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
+        );
+        assert_eq!(identity.user.as_deref(), Some("ASIER\\user"));
+        assert_eq!(identity.cmdline, None);
+    }
 }
